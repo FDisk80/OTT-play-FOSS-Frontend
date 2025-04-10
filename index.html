@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://ottp.eu.org:* https://ottp.eu.org:*; connect-src 'self' http://ottp.eu.org:* https://ottp.eu.org:* ws: wss: blob: data: media-stream: filesystem: *;">
+    <title>Web Viewer</title>
+    <style>
+        /* Basic styling */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            /* Remove flex display */
+            background-color: #000000; /* Black background for shell */
+        }
+
+        /* Draggable top bar - Transparent, always present for dragging */
+        #title-bar {
+            height: 30px;
+            background-color: transparent; /* Invisible drag handle */
+            width: 100%;
+            position: fixed; /* Fixed overlay */
+            top: 0;
+            left: 0;
+            z-index: 9998; /* Below button container */
+            -webkit-app-region: drag; /* Make this area draggable */
+            user-select: none;
+            /* Make it focusable programmatically */
+            tabindex: -1;
+            outline: none;
+        }
+
+        /* Container for buttons - positioned top-right */
+        #button-container {
+            position: fixed; /* Fixed overlay */
+            top: 0;
+            right: 5px; /* Padding from edge */
+            height: 30px; /* Match title bar height */
+            z-index: 9999; /* On top */
+            display: flex;
+            align-items: center;
+            -webkit-app-region: no-drag; /* Container is NOT draggable */
+        }
+
+        /* Style for buttons inside the container */
+        #button-container button {
+             margin-left: 5px;
+             padding: 2px 8px;
+             font-size: 12px;
+             background-color: #555;
+             color: white;
+             border: 1px solid #777;
+             border-radius: 3px;
+             cursor: pointer;
+             /* --- Auto-Hide via CSS Hover on Container --- */
+             opacity: 0; /* Start hidden */
+             pointer-events: none; /* Start non-interactive */
+             transition: opacity 0.2s ease-in-out; /* Smooth fade */
+             -webkit-app-region: no-drag; /* Buttons are NOT draggable */
+        }
+         #button-container button:hover {
+             background-color: #777;
+         }
+         /* Show buttons only when hovering the button container */
+         #button-container:hover button {
+             opacity: 1;
+             pointer-events: auto;
+         }
+
+        /* REMOVED Webview container style */
+
+        /* The webview tag itself - Now fills entire window */
+        webview {
+            position: fixed; /* Position behind overlays */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            z-index: 1; /* Lowest layer */
+        }
+    </style>
+</head>
+<body>
+    <div id="title-bar"></div>
+
+     <div id="button-container">
+        <button id="fullscreen-btn" title="Toggle Fullscreen">[ ]</button>
+        <button id="close-btn" title="Close Application">X</button>
+    </div>
+
+
+    <webview
+        id="wv1"
+        src="http://ottp.eu.org/f/pc/"
+        style="width:100%; height:100%;" /* Style attribute less critical now */
+        partition="persist:webappsession"
+        webpreferences="webSecurity=no, contextIsolation=yes, nodeIntegration=no"
+    ></webview>
+
+
+    <script>
+        console.log('Renderer process script started (Shell with Webview).');
+
+        const buttonContainer = document.getElementById('button-container');
+        const webviewElement = document.getElementById('wv1'); // Get webview element again
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const closeBtn = document.getElementById('close-btn');
+        const titleBar = document.getElementById('title-bar'); // Get title bar element
+
+        // --- Button visibility controlled by CSS hover on button-container ---
+        console.log('Button visibility controlled by CSS hover on button-container.');
+
+        // --- Button Listeners ---
+        if (fullscreenBtn) {
+            fullscreenBtn.addEventListener('click', (event) => {
+                console.log("Fullscreen button clicked.");
+                try {
+                    window.electronAPI.send('toggle-fullscreen');
+                    // --- Focus Management ---
+                    const clickedButton = event.target;
+                    setTimeout(() => {
+                        // console.log("Attempting to blur button and focus webview (delayed)");
+                        clickedButton.blur(); // Remove focus from the button
+                        if (webviewElement) {
+                             // console.log("Focusing webview element...");
+                             webviewElement.focus(); // Try focusing the webview tag itself
+                        }
+                    }, 50); // Use slight delay
+                } catch(e) { console.error("Error sending toggle-fullscreen or changing focus:", e); }
+            });
+            console.log('Fullscreen button listener added.');
+        } else { console.error('Could not find fullscreen-btn element!'); }
+
+        if (closeBtn) {
+             closeBtn.addEventListener('click', (event) => {
+                console.log("Close button clicked.");
+                 try {
+                     window.electronAPI.send('quit-app');
+                     // Use setTimeout for consistency
+                     const clickedButton = event.target;
+                     setTimeout(() => {
+                        clickedButton.blur();
+                     }, 50);
+                 } catch(e) { console.error("Error sending quit-app or blurring button:", e); }
+             });
+             console.log('Close button listener added.');
+        } else { console.error('Could not find close-btn element!'); }
+
+        // --- Removed 'F' Key Listener ---
+        // --- Removed Manual Drag Logic ---
+        // --- Removed Fullscreen State Update Handler ---
+
+        // --- Webview Logging & Initial Focus ---
+        if (webviewElement) {
+            // Check for partition attribute via JS
+            const partition = webviewElement.getAttribute('partition');
+            if(partition) { console.log(`Webview using partition: ${partition}`); }
+            else { console.warn('Webview partition attribute not found or empty! State might not persist.'); }
+
+            // Listen for webview console messages
+            webviewElement.addEventListener('console-message', (e) => {
+                 console.log('[Webview Console]', `L${e.line}: ${e.message}`, e.sourceId);
+            });
+
+            webviewElement.addEventListener('did-start-loading', () => { console.log('Webview started loading.'); });
+            webviewElement.addEventListener('did-stop-loading', () => { console.log('Webview stopped loading.'); });
+            webviewElement.addEventListener('did-fail-load', (error) => {
+                 if (error.errorCode === -3 /* ABORTED */) return;
+                 console.error('Webview failed to load:', error);
+            });
+            webviewElement.addEventListener('dom-ready', () => {
+                console.log('Webview DOM ready.');
+                // *** Attempt initial focus on webview content using executeJavaScript ***
+                console.log('Attempting initial focus on webview content (delayed)...');
+                setTimeout(() => {
+                    // Use executeJavaScript to focus body inside webview
+                    webviewElement.executeJavaScript('document.body.focus();', true)
+                       .then(() => console.log("Executed focus script in webview"))
+                       .catch(err => console.error("Error executing initial focus script:", err));
+                }, 500); // Increased delay to 500ms
+            });
+        } else { console.error('Could not find webview element (wv1)!'); }
+
+    </script>
+</body>
+</html>

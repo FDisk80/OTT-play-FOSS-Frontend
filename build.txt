@@ -1,0 +1,38 @@
+1. Install electron-builderOpen your terminal/Command Prompt in your project directory. Run the following command to install electron-builder as a development dependency:npm install --save-dev electron-builder
+2. Configure package.json for BuildingOpen your package.json file in a text editor.You need to add a build section and potentially modify the scripts section. Make sure your package.json looks similar to this (you can copy/paste the build section and the "dist" script line):
+
+{
+  "name": "electron-web-viewer",
+  "version": "1.0.0",
+  "description": "Frameless web viewer using Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder", // Add this line to run the builder
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3" // Or the version npm installed
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "build": { // Add this whole build section
+    "appId": "com.electron.webviewapp", // Choose a unique ID
+    "win": {
+      "target": "nsis", // Creates a standard Windows installer
+      "icon": "build/icon.ico" // Optional: Path to an icon file (see below)
+    },
+    "nsis": {
+      "oneClick": false, // Allow user to choose install location
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
+
+(Optional) Icon: If you want an icon for your .exe file, create a folder named build inside your project directory. Place a valid Windows icon file (.ico format, e.g., 256x256 pixels) named icon.ico inside the build folder. If you don't have an icon, you can remove the "icon": "build/icon.ico" line from the build section.3. Run the Build CommandGo back to your terminal/Command Prompt, still inside your project directory.Run the build script:npm run dist
+electron-builder will now package your application. It might download some necessary tools on the first run. This will create a dist folder in your project directory containing the installer (e.g., electron-web-viewer Setup 1.0.0.exe).4. Test the Packaged AppNavigate to the dist folder using File Explorer.Run the installer (.exe file) to install the application.After installation, launch the application from the Start Menu or Desktop shortcut created by the installer. Do not launch it from the CMD console.Check if the application window now correctly gets keyboard focus immediately upon starting, allowing you to use keys for the website content without clicking first.
