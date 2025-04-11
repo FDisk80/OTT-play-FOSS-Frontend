@@ -1,4 +1,4 @@
-# OTT-play-FOSS-Frontend
+# OTT-play-FOSS-Frontend (Windows x64)
 This application launches OTT-play FOSS in always on top, resizable and compact Webview mode.
 
 Requires HEVC Video Extension installed on the system.
