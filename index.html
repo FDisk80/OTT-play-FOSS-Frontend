@@ -2,186 +2,339 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://ottp.eu.org:* https://ottp.eu.org:*; connect-src 'self' http://ottp.eu.org:* https://ottp.eu.org:* ws: wss: blob: data: media-stream: filesystem: *;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://ottp.eu.org:* https://ottp.eu.org:*; connect-src 'self' http://ottp.eu.org:* https://ottp.eu.org:* ws: wss: blob: data: media-stream: filesystem: *; webview-src http://ottp.eu.org:* https://ottp.eu.org:*;">
     <title>Web Viewer</title>
     <style>
-        /* Basic styling */
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
-            /* Remove flex display */
-            background-color: #000000; /* Black background for shell */
+            background-color: #000000; /* Shell background */
+            display: flex;
+            flex-direction: column;
+            cursor: default; /* Default cursor for the host page */
         }
 
-        /* Draggable top bar - Transparent, always present for dragging */
         #title-bar {
             height: 30px;
-            background-color: transparent; /* Invisible drag handle */
+            background-color: transparent;
             width: 100%;
-            position: fixed; /* Fixed overlay */
+            position: fixed;
             top: 0;
             left: 0;
-            z-index: 9998; /* Below button container */
-            -webkit-app-region: drag; /* Make this area draggable */
+            z-index: 9998;
+            -webkit-app-region: drag;
             user-select: none;
-            /* Make it focusable programmatically */
-            tabindex: -1;
-            outline: none;
+            pointer-events: auto;
+            -webkit-user-select: none;
         }
 
-        /* Container for buttons - positioned top-right */
         #button-container {
-            position: fixed; /* Fixed overlay */
+            position: fixed;
             top: 0;
-            right: 5px; /* Padding from edge */
-            height: 30px; /* Match title bar height */
-            z-index: 9999; /* On top */
+            right: 0;
+            height: 30px;
+            z-index: 10000; /* Above overlay */
             display: flex;
             align-items: center;
-            -webkit-app-region: no-drag; /* Container is NOT draggable */
+            padding-right: 5px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease-in-out;
+            -webkit-app-region: no-drag;
         }
 
-        /* Style for buttons inside the container */
-        #button-container button {
-             margin-left: 5px;
-             padding: 2px 8px;
-             font-size: 12px;
-             background-color: #555;
-             color: white;
-             border: 1px solid #777;
-             border-radius: 3px;
-             cursor: pointer;
-             /* --- Auto-Hide via CSS Hover on Container --- */
-             opacity: 0; /* Start hidden */
-             pointer-events: none; /* Start non-interactive */
-             transition: opacity 0.2s ease-in-out; /* Smooth fade */
-             -webkit-app-region: no-drag; /* Buttons are NOT draggable */
+        #title-bar:hover + #button-container,
+        #button-container:hover {
+            opacity: 1;
+            pointer-events: auto;
         }
-         #button-container button:hover {
-             background-color: #777;
-         }
-         /* Show buttons only when hovering the button container */
-         #button-container:hover button {
-             opacity: 1;
-             pointer-events: auto;
-         }
 
-        /* REMOVED Webview container style */
+        .control-button {
+            background-color: rgba(255, 255, 255, 0.5);
+            color: black;
+            border: none;
+            border-radius: 5px;
+            width: 20px;
+            height: 20px;
+            margin-left: 5px;
+            font-size: 12px;
+            line-height: 20px;
+            text-align: center;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+            pointer-events: auto;
+            transition: background-color 0.2s ease;
+            font-family: 'Segoe UI Symbol', Symbola, EmojiSymbols, sans-serif;
+        }
 
-        /* The webview tag itself - Now fills entire window */
+        .control-button:hover {
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+
         webview {
-            position: fixed; /* Position behind overlays */
+            flex-grow: 1;
+            border: none;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            z-index: 1; /* Below title bar elements */
+        }
+
+        #cursor-overlay {
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            border: none;
-            z-index: 1; /* Lowest layer */
+            z-index: 9990; /* Below title bar/buttons but above webview */
+            background-color: transparent; /* Invisible */
+            display: none; /* Hidden by default */
         }
+
     </style>
 </head>
 <body>
     <div id="title-bar"></div>
-
-     <div id="button-container">
-        <button id="fullscreen-btn" title="Toggle Fullscreen">[ ]</button>
-        <button id="close-btn" title="Close Application">X</button>
+    <div id="button-container">
+        <button id="fullscreen-button" class="control-button" title="Toggle Fullscreen">□</button>
+        <button id="close-button" class="control-button" title="Close">X</button>
     </div>
 
+    <div id="cursor-overlay"></div>
 
-    <webview
-        id="wv1"
-        src="http://ottp.eu.org/f/pc/"
-        style="width:100%; height:100%;" /* Style attribute less critical now */
-        partition="persist:webappsession"
-        webpreferences="webSecurity=no, contextIsolation=yes, nodeIntegration=no"
-    ></webview>
-
+    <webview id="wv1"
+             src="http://ottp.eu.org/f/pc/"
+             style="width:100%; height:100%;"
+             autosize="on"
+             partition="persist:ottplay_session"
+             webpreferences="allowRunningInsecureContent=yes">
+             </webview>
 
     <script>
-        console.log('Renderer process script started (Shell with Webview).');
-
+        // --- Element References ---
+        const fullscreenButton = document.getElementById('fullscreen-button');
+        const closeButton = document.getElementById('close-button');
+        const titleBar = document.getElementById('title-bar');
         const buttonContainer = document.getElementById('button-container');
-        const webviewElement = document.getElementById('wv1'); // Get webview element again
-        const fullscreenBtn = document.getElementById('fullscreen-btn');
-        const closeBtn = document.getElementById('close-btn');
-        const titleBar = document.getElementById('title-bar'); // Get title bar element
+        const webviewElement = document.getElementById('wv1');
+        const bodyElement = document.body;
+        const cursorOverlay = document.getElementById('cursor-overlay');
 
-        // --- Button visibility controlled by CSS hover on button-container ---
-        console.log('Button visibility controlled by CSS hover on button-container.');
+        // --- Constants ---
+        const FULLSCREEN_ICON = '❐';
+        const WINDOWED_ICON = '□';
+        const CURSOR_HIDE_DELAY = 3000; // 3 seconds
+        const CSS_FORCE_ARROW = '* { cursor: default !important; }';
+        const CSS_FORCE_NONE = '* { cursor: none !important; }';
+        let forceArrowCSSKey = null;
+        let forceNoneCSSKey = null;
 
-        // --- Button Listeners ---
-        if (fullscreenBtn) {
-            fullscreenBtn.addEventListener('click', (event) => {
-                console.log("Fullscreen button clicked.");
-                try {
-                    window.electronAPI.send('toggle-fullscreen');
-                    // --- Focus Management ---
-                    const clickedButton = event.target;
-                    setTimeout(() => {
-                        // console.log("Attempting to blur button and focus webview (delayed)");
-                        clickedButton.blur(); // Remove focus from the button
-                        if (webviewElement) {
-                             // console.log("Focusing webview element...");
-                             webviewElement.focus(); // Try focusing the webview tag itself
-                        }
-                    }, 50); // Use slight delay
-                } catch(e) { console.error("Error sending toggle-fullscreen or changing focus:", e); }
+        // --- State Variables ---
+        let isFullScreenMode = false;
+        let cursorHideTimer = null;
+
+        // --- Helper Function for CSS Injection ---
+        async function setWebviewCursor(style) {
+            // console.log(`[DEBUG CURSOR] setWebviewCursor called with style: ${style}`);
+            if (!webviewElement || typeof webviewElement.insertCSS !== 'function' || typeof webviewElement.removeInsertedCSS !== 'function') {
+                 console.warn("[DEBUG CURSOR] Webview or CSS methods not ready.");
+                 return;
+            }
+            try {
+                if (forceArrowCSSKey) await webviewElement.removeInsertedCSS(forceArrowCSSKey).catch(e => console.warn("[DEBUG CURSOR] Error removing arrow CSS:", e));
+                if (forceNoneCSSKey) await webviewElement.removeInsertedCSS(forceNoneCSSKey).catch(e => console.warn("[DEBUG CURSOR] Error removing none CSS:", e));
+                forceArrowCSSKey = null;
+                forceNoneCSSKey = null;
+                if (style === 'default') {
+                    forceArrowCSSKey = await webviewElement.insertCSS(CSS_FORCE_ARROW);
+                } else if (style === 'none') {
+                    forceNoneCSSKey = await webviewElement.insertCSS(CSS_FORCE_NONE);
+                }
+            } catch (error) {
+                if (!error.message.includes("destroyed") && !error.message.includes("navigation")) {
+                    console.error('[DEBUG CURSOR] Failed to insert/remove CSS in webview:', error);
+                } else {
+                     console.warn('[DEBUG CURSOR] Ignoring CSS error during navigation/destruction.');
+                }
+            }
+        }
+
+
+        // --- Event Listeners ---
+
+        // Fullscreen Button Click
+        if (fullscreenButton) {
+            fullscreenButton.addEventListener('click', () => {
+                window.electronAPI.send('toggle-fullscreen');
+                setTimeout(() => { if (webviewElement) webviewElement.focus(); }, 50);
             });
-            console.log('Fullscreen button listener added.');
-        } else { console.error('Could not find fullscreen-btn element!'); }
+        } else { console.error('Could not find fullscreen button!'); }
 
-        if (closeBtn) {
-             closeBtn.addEventListener('click', (event) => {
-                console.log("Close button clicked.");
-                 try {
-                     window.electronAPI.send('quit-app');
-                     // Use setTimeout for consistency
-                     const clickedButton = event.target;
-                     setTimeout(() => {
-                        clickedButton.blur();
-                     }, 50);
-                 } catch(e) { console.error("Error sending quit-app or blurring button:", e); }
-             });
-             console.log('Close button listener added.');
-        } else { console.error('Could not find close-btn element!'); }
+        // Close Button Click
+        if (closeButton) {
+            closeButton.addEventListener('click', () => window.electronAPI.send('quit-app'));
+        } else { console.error('Could not find close button!'); }
 
-        // --- Removed 'F' Key Listener ---
-        // --- Removed Manual Drag Logic ---
-        // --- Removed Fullscreen State Update Handler ---
+        // Context Menu Trigger Logic
+        document.body.addEventListener('contextmenu', (event) => {
+            let target = event.target;
+            let isInsideWebviewArea = false;
+            try {
+                 if (webviewElement && (webviewElement.contains(target) || target === cursorOverlay)) {
+                     isInsideWebviewArea = true;
+                 }
+            } catch(e) { console.warn("Error checking webview contains:", e); }
+            const clickY = event.clientY;
+            const titleBarHeight = 30;
+            if (clickY <= titleBarHeight && !isInsideWebviewArea) {
+                 console.log(`Right-click inside title bar area (Y: ${clickY}). Preventing menu.`);
+                 event.preventDefault();
+                 return;
+            }
+            if (isInsideWebviewArea) {
+                console.log('Right-click inside webview/overlay area. Allowing default behavior.');
+                return;
+            }
+            console.log('Right-click on background detected. Showing custom context menu.');
+            event.preventDefault();
+            window.electronAPI.send('show-context-menu');
+        });
 
-        // --- Webview Logging & Initial Focus ---
+
+        // --- Listen for Fullscreen State Changes ---
+        if (window.electronAPI && typeof window.electronAPI.receive === 'function') {
+            const removeListener = window.electronAPI.receive('fullscreen-state-changed', (isFullScreen) => {
+                // console.log(`[DEBUG CURSOR] Fullscreen state changed callback. isFullScreen: ${isFullScreen}`);
+                isFullScreenMode = isFullScreen;
+
+                if (fullscreenButton) {
+                    fullscreenButton.textContent = isFullScreen ? FULLSCREEN_ICON : WINDOWED_ICON;
+                    fullscreenButton.title = isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen";
+                }
+
+                // Manage Overlay and Cursor on State Change
+                clearTimeout(cursorHideTimer);
+                if (isFullScreenMode) {
+                    // console.log("[DEBUG CURSOR] FS State Change: Entering fullscreen, enabling overlay.");
+                    cursorOverlay.style.display = 'block';
+                    cursorOverlay.style.cursor = 'default';
+                    cursorOverlay.style.pointerEvents = 'none';
+                    bodyElement.style.cursor = 'default';
+                    setWebviewCursor('default');
+                    resetCursorHideTimer(); // Start timer immediately
+                } else {
+                    // console.log("[DEBUG CURSOR] FS State Change: Exiting fullscreen, disabling overlay.");
+                    cursorOverlay.style.display = 'none';
+                    bodyElement.style.cursor = 'default';
+                    setWebviewCursor('default');
+                }
+            });
+        } else { console.error("electronAPI.receive is not available! Check preload script."); }
+
+
+        // --- JS Button Container Visibility Logic ---
+        let hideButtonTimer = null;
+        function showButtons() { /* ... (same as before) ... */ clearTimeout(hideButtonTimer); if (buttonContainer) { buttonContainer.style.opacity = '1'; buttonContainer.style.pointerEvents = 'auto'; } }
+        function startHideTimer() { /* ... (same as before) ... */ clearTimeout(hideButtonTimer); hideButtonTimer = setTimeout(() => { if (buttonContainer) { buttonContainer.style.opacity = '0'; buttonContainer.style.pointerEvents = 'none'; } }, 200); }
+        if (titleBar && buttonContainer) { titleBar.addEventListener('mouseenter', showButtons); titleBar.addEventListener('mouseleave', startHideTimer); buttonContainer.addEventListener('mouseenter', showButtons); buttonContainer.addEventListener('mouseleave', startHideTimer); }
+        else { console.error("Could not find titleBar or buttonContainer for hover effects."); }
+
+
+        // --- Cursor Auto-Hide Logic (Overlay + CSS Injection Method) ---
+        function resetCursorHideTimer() {
+            // console.log('[DEBUG CURSOR] resetCursorHideTimer called.');
+            clearTimeout(cursorHideTimer);
+            if (isFullScreenMode) {
+                // console.log('[DEBUG CURSOR] Starting hide timer...');
+                cursorHideTimer = setTimeout(async () => {
+                    // console.log("[DEBUG CURSOR] Timeout expired. Attempting to hide cursor...");
+                    if (cursorOverlay) {
+                        // console.log("[DEBUG CURSOR] Setting overlay cursor: none, pointerEvents: auto");
+                        cursorOverlay.style.cursor = 'none';
+                        cursorOverlay.style.pointerEvents = 'auto';
+                    } else { console.warn("[DEBUG CURSOR] Overlay not found in timer callback."); }
+                    // console.log("[DEBUG CURSOR] Calling setWebviewCursor('none')");
+                    await setWebviewCursor('none');
+                    // console.log("[DEBUG CURSOR] Finished attempting to hide cursor.");
+                }, CURSOR_HIDE_DELAY);
+            } else {
+                // console.log("[DEBUG CURSOR] Not starting timer (not fullscreen).");
+            }
+        }
+
+        async function handleOverlayMouseMove() {
+            // console.log('[DEBUG CURSOR] handleOverlayMouseMove fired.');
+            if (isFullScreenMode) {
+                let cursorWasHidden = (cursorOverlay && cursorOverlay.style.cursor === 'none');
+                if (cursorWasHidden) {
+                    // console.log("[DEBUG CURSOR] Mouse moved on overlay, showing cursor.");
+                    cursorOverlay.style.cursor = 'default';
+                    cursorOverlay.style.pointerEvents = 'none';
+                    // console.log("[DEBUG CURSOR] Calling setWebviewCursor('default')");
+                    await setWebviewCursor('default');
+                    // console.log("[DEBUG CURSOR] Finished attempting to show cursor.");
+                }
+                resetCursorHideTimer();
+            }
+        }
+
+        // Attach listener ONLY to the overlay
+        if (cursorOverlay) {
+             cursorOverlay.addEventListener('mousemove', handleOverlayMouseMove);
+        } else { console.error("Could not find cursor overlay element!");}
+        // --- END Cursor Auto-Hide Logic ---
+
+
+        // --- Webview Setup ---
         if (webviewElement) {
-            // Check for partition attribute via JS
-            const partition = webviewElement.getAttribute('partition');
-            if(partition) { console.log(`Webview using partition: ${partition}`); }
-            else { console.warn('Webview partition attribute not found or empty! State might not persist.'); }
+            console.log('Webview element found.');
+            console.log(`Webview partition set to: ${webviewElement.getAttribute('partition')}`);
+            console.log(`Webview webpreferences set to: ${webviewElement.getAttribute('webpreferences')}`);
+            webviewElement.addEventListener('console-message', (e) => console.log('[Webview Console]', `L${e.line}: ${e.message}`, e.sourceId));
+            webviewElement.addEventListener('did-start-loading', () => console.log('Webview started loading.'));
+            webviewElement.addEventListener('did-stop-loading', () => console.log('Webview stopped loading.'));
+            webviewElement.addEventListener('did-fail-load', (error) => { if (error.errorCode !== -3) console.error('Webview failed to load:', error); });
 
-            // Listen for webview console messages
-            webviewElement.addEventListener('console-message', (e) => {
-                 console.log('[Webview Console]', `L${e.line}: ${e.message}`, e.sourceId);
-            });
-
-            webviewElement.addEventListener('did-start-loading', () => { console.log('Webview started loading.'); });
-            webviewElement.addEventListener('did-stop-loading', () => { console.log('Webview stopped loading.'); });
-            webviewElement.addEventListener('did-fail-load', (error) => {
-                 if (error.errorCode === -3 /* ABORTED */) return;
-                 console.error('Webview failed to load:', error);
-            });
             webviewElement.addEventListener('dom-ready', () => {
-                console.log('Webview DOM ready.');
-                // *** Attempt initial focus on webview content using executeJavaScript ***
-                console.log('Attempting initial focus on webview content (delayed)...');
+                console.log('Webview DOM ready. Attempting focus & opening DevTools...');
+                 try {
+                     // Keep DevTools open for now if needed
+                     // webviewElement.openDevTools();
+                     // console.log("Webview DevTools opened or attempted to open.");
+                } catch (e) { console.error("Error opening webview DevTools:", e); }
+                // ------------------------------------------
                 setTimeout(() => {
-                    // Use executeJavaScript to focus body inside webview
-                    webviewElement.executeJavaScript('document.body.focus();', true)
-                       .then(() => console.log("Executed focus script in webview"))
-                       .catch(err => console.error("Error executing initial focus script:", err));
-                }, 500); // Increased delay to 500ms
+                    if (webviewElement) {
+                        webviewElement.executeJavaScript('document.body.focus();', true)
+                           .then(() => console.log("Executed focus script in webview"))
+                           .catch(err => console.error("Error executing initial focus script:", err));
+                    }
+                }, 500);
             });
+
+            webviewElement.addEventListener('did-finish-load', () => {
+                 console.log('Webview finished loading. Focusing element & setting initial cursor.');
+                 if (webviewElement) {
+                     webviewElement.focus();
+                     setWebviewCursor('default');
+                 }
+            });
+
+            // --- RE-ENABLED: Listen for webview 'close' event ---
+            webviewElement.addEventListener('close', () => {
+                console.log('Webview content attempted to close. Quitting application...');
+                try {
+                    // Send message to main process to quit the entire app
+                    window.electronAPI.send('quit-app');
+                } catch (error) {
+                    console.error("Error sending quit-app message:", error);
+                }
+            });
+            // --- END RE-ENABLED ---
+
         } else { console.error('Could not find webview element (wv1)!'); }
 
     </script>

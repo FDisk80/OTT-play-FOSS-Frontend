@@ -7,12 +7,18 @@ const path = require('path');
 
 // Keep global references
 let mainWindow;
-// let mainView; // REMOVED BrowserView reference
 let store;
 
-// Configuration
-// const APP_URL = "http://ottp.eu.org/f/pc/"; // URL loaded by webview in index.html
-// const TITLE_BAR_HEIGHT = 30; // Used by index.html layout
+// Define the desired aspect ratio (e.g., 16:9)
+const ASPECT_RATIO = 16 / 9;
+
+// Function to send fullscreen state to renderer
+function sendFullscreenState(state) {
+  if (mainWindow && mainWindow.webContents && !mainWindow.isDestroyed()) {
+    console.log(`Sending fullscreen state to renderer: ${state}`);
+    mainWindow.webContents.send('fullscreen-state-changed', state);
+  }
+}
 
 // Make createWindow async to allow await for dynamic import
 async function createWindow() {
@@ -22,9 +28,13 @@ async function createWindow() {
   // ------------------------------------------
 
   // Get saved window bounds or use defaults
-  const defaultBounds = { width: 1024, height: 768 };
+  const defaultBounds = { width: 1024, height: Math.round(1024 / ASPECT_RATIO) };
   const savedBounds = store.get('windowBounds');
-  const bounds = (savedBounds && typeof savedBounds === 'object' && savedBounds.width > 100 && savedBounds.height > 100) ? savedBounds : defaultBounds;
+  let bounds = (savedBounds && typeof savedBounds === 'object' && savedBounds.width > 100 && savedBounds.height > 100) ? savedBounds : defaultBounds;
+
+  // --- Adjust loaded height based on width and aspect ratio ---
+  bounds.height = Math.round(bounds.width / ASPECT_RATIO);
+  // --- End Adjustment ---
 
   console.log('Creating window with bounds:', bounds);
 
@@ -34,115 +44,130 @@ async function createWindow() {
     y: bounds.y,
     width: bounds.width,
     height: bounds.height,
-    frame: false,       // Keep frameless
-    resizable: true,    // Keep resizable
-    alwaysOnTop: true, // Keep always on top
-    show: false, // Start hidden, show when ready
+    frame: false,
+    resizable: true,
+    alwaysOnTop: true, // Default is on
+    show: false,
+    maximizable: false, // Prevent maximize on double-click
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'), // Preload for the shell window (index.html)
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: true // Enable <webview> tag
+      webviewTag: true
+      // allowRunningInsecureContent: true // Removed previously
     }
   });
 
-  // Load the local index.html (shell with webview tag)
-  mainWindow.loadFile('index.html');
-  console.log('Window created. Loading index.html shell (contains webview)...');
+  // --- Set the Aspect Ratio ---
+  mainWindow.setAspectRatio(ASPECT_RATIO);
+  console.log(`Aspect ratio set to ${ASPECT_RATIO}`);
+  // -----------------------------
 
-  // *** Attempt to focus the app/window AFTER it's ready to show ***
+  // --- Prevent Default OS Context Menu Hook (Windows Only) ---
+  // Keeping this attempt as it doesn't interfere with Escape key
+  if (process.platform === 'win32') {
+    const WM_SYSCOMMAND = 0x0112;
+    const SC_KEYMENU = 0xF100;
+    const SC_MOUSEMENU = 0xF090;
+
+    mainWindow.hookWindowMessage(WM_SYSCOMMAND, (wParamBuffer) => {
+      const wParam = wParamBuffer.readIntLE(0, 4);
+      const command = wParam & 0xFFF0;
+      // console.log(`WM_SYSCOMMAND received, command: 0x${command.toString(16)}`);
+      if (command === SC_KEYMENU || command === SC_MOUSEMENU) {
+         console.log(`System menu command (0x${command.toString(16)}) detected, preventing default menu.`);
+         return true;
+      }
+      return false;
+    });
+    console.log('Windows system menu hook installed (Checking SC_KEYMENU & SC_MOUSEMENU).');
+  }
+  // --- END Hook ---
+
+
+  // Load the local index.html
+  mainWindow.loadFile('index.html');
+  console.log('Window created. Loading index.html shell...');
+
+  // Show window when ready
   mainWindow.once('ready-to-show', () => {
       console.log('Window ready-to-show.');
-      mainWindow.show(); // Show the window
+      mainWindow.show();
       console.log('Attempting app.focus()...');
-      app.focus({ steal: true }); // Force focus steal on Windows/macOS
-      // Optionally, try focusing the window explicitly again after showing
-      // setTimeout(() => {
-      //     if (mainWindow && !mainWindow.isDestroyed()) {
-      //          console.log('Attempting mainWindow.focus() after show.');
-      //          mainWindow.focus();
-      //     }
-      // }, 100); // Short delay after show
+      app.focus({ steal: true });
+      sendFullscreenState(mainWindow.isFullScreen());
   });
 
-
-  // Keep DevTools commented out unless needed for the shell window
-  // mainWindow.webContents.openDevTools();
-
+  // Optional: Open DevTools for the main window (shell)
+  // mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   // --- Save Window Bounds Logic ---
   let resizeTimeout;
-  const saveBounds = () => {
-    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isFullScreen() || !store) { return; }
-    try {
-        const currentBounds = mainWindow.getBounds();
-        store.set('windowBounds', currentBounds);
-    } catch(e) { console.error("Error saving bounds:", e); }
-  };
+  const saveBounds = () => { /* ... (same as before) ... */ if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isFullScreen() || !store || mainWindow.isMaximized()) { console.log('Skipping bounds save...'); return; } try { const currentBounds = mainWindow.getBounds(); console.log('Saving bounds:', currentBounds); store.set('windowBounds', currentBounds); } catch(e) { console.error("Error saving bounds:", e); } };
   const debouncedSave = () => { clearTimeout(resizeTimeout); resizeTimeout = setTimeout(saveBounds, 500); };
   mainWindow.on('resize', debouncedSave);
   mainWindow.on('move', debouncedSave);
-  mainWindow.on('leave-full-screen', saveBounds);
-  mainWindow.on('closed', function () { saveBounds(); mainWindow = null; }); // No mainView to clear
+
+  // --- Aspect Ratio / Fullscreen Event Handling ---
+  mainWindow.on('leave-full-screen', () => { /* ... (same as before) ... */ if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.setAspectRatio(ASPECT_RATIO); console.log('Re-applied aspect ratio...'); saveBounds(); sendFullscreenState(false); } });
+  mainWindow.on('enter-full-screen', () => { /* ... (same as before) ... */ if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.setAspectRatio(0); console.log('Disabled aspect ratio...'); sendFullscreenState(true); } });
+
+  // --- Window Closed Event ---
+  mainWindow.on('closed', function () { mainWindow = null; });
 
   // --- IPC Listeners ---
-  ipcMain.on('toggle-fullscreen', (event) => {
-    if (mainWindow) {
-      const isFullScreen = mainWindow.isFullScreen();
-      mainWindow.setFullScreen(!isFullScreen);
-      // No need to send state back
-    }
-  });
+  ipcMain.on('toggle-fullscreen', (event) => { /* ... (same as before) ... */ if (mainWindow) { mainWindow.setFullScreen(!mainWindow.isFullScreen()); } }); // Removed console log for brevity
   ipcMain.on('quit-app', () => { app.quit(); });
+  ipcMain.on('show-context-menu', (event) => { /* ... (same as before) ... */ if (!mainWindow) return; const isAlwaysOnTop = mainWindow.isAlwaysOnTop(); const isFullScreen = mainWindow.isFullScreen(); const template = [ { label: 'Always on Top', type: 'checkbox', checked: isAlwaysOnTop, click: () => { if (mainWindow) mainWindow.setAlwaysOnTop(!mainWindow.isAlwaysOnTop()); } }, { label: isFullScreen ? 'Exit Fullscreen' : 'Enter Fullscreen', click: () => { if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen()); } }, { type: 'separator' }, { label: 'Close', click: () => { app.quit(); } } ]; const menu = Menu.buildFromTemplate(template); menu.popup({ window: mainWindow }); });
 
 } // End of async createWindow function
 
+// --- App Lifecycle Events ---
 app.whenReady().then(async () => {
-  // Set User Agent globally (still potentially useful for webview)
   const chromeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
   console.log(`Setting User Agent fallback to: ${chromeUserAgent}`);
-  app.userAgentFallback = chromeUserAgent; // Apply globally
+  app.userAgentFallback = chromeUserAgent;
 
   // --- Global Shortcuts ---
-  globalShortcut.register('Escape', () => {
-    console.log('Escape key pressed.');
-    if (mainWindow && mainWindow.isFullScreen()) {
-        console.log('Exiting fullscreen via Escape.');
-        mainWindow.setFullScreen(false);
-        // No need to send state back
-    } else { console.log('Escape pressed but not fullscreen - doing nothing.'); }
+
+  // --- REMOVED: Escape key shortcut ---
+  // globalShortcut.register('Escape', () => {
+  //   console.log('Escape key pressed.');
+  //   if (mainWindow && mainWindow.isFullScreen()) {
+  //       console.log('Exiting fullscreen via Escape.');
+  //       mainWindow.setFullScreen(false); // Triggers 'leave-full-screen' event
+  //   } else { console.log('Escape pressed but not fullscreen - doing nothing.'); }
+  // });
+  // --- END REMOVED ---
+
+  // F11 key toggles fullscreen
+  globalShortcut.register('F11', () => {
+      console.log('F11 key pressed.');
+      if (mainWindow) {
+          console.log('Toggling fullscreen via F11.');
+          mainWindow.setFullScreen(!mainWindow.isFullScreen()); // Triggers enter/leave events
+      }
   });
-  console.log("Registered global shortcuts: Escape (Exits Fullscreen Only)");
+
+  // Update console log to reflect removed shortcut
+  console.log("Registered global shortcuts: F11 (Toggles Fullscreen)");
 
 
-  // Call the async function to initialize store before creating window
   await createWindow();
+  Menu.setApplicationMenu(null);
 
-  Menu.setApplicationMenu(null); // No default menu
-
-  app.on('activate', function () {
-     if (BrowserWindow.getAllWindows().length === 0) {
-        if (!store) {
-             import('electron-store').then(({ default: Store }) => { store = new Store(); createWindow(); })
-                 .catch(err => console.error("Failed to import electron-store on activate:", err));
-        } else { createWindow(); }
-     }
-  });
+  app.on('activate', function () { /* ... (same as before) ... */ if (BrowserWindow.getAllWindows().length === 0) { if (!store) { import('electron-store').then(({ default: Store }) => { store = new Store(); createWindow(); }); } else { createWindow(); } } });
 });
 
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit();
-});
+app.on('window-all-closed', function () { if (process.platform !== 'darwin') app.quit(); });
 
 app.on('will-quit', () => {
-  if (mainWindow && !mainWindow.isDestroyed() && store) {
-      try {
-        if (!mainWindow.isFullScreen()) {
-            const currentBounds = mainWindow.getBounds();
-            store.set('windowBounds', currentBounds);
-        }
-      } catch(e) { console.error("Error saving bounds on quit:", e); }
-  }
+  // --- Save bounds logic (same as before) ---
+  if (mainWindow && !mainWindow.isDestroyed() && store && !mainWindow.isFullScreen() && !mainWindow.isMaximized()) {
+      try { store.set('windowBounds', mainWindow.getBounds()); console.log('Saved bounds on will-quit:', mainWindow.getBounds()); } catch(e) { console.error("Error saving bounds on quit:", e); }
+  } else { console.log('Not saving bounds on quit.'); }
+
+  // Unregister all shortcuts.
   globalShortcut.unregisterAll();
   console.log('App quitting. Global shortcuts unregistered.');
 });

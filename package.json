@@ -1,6 +1,6 @@
 {
-  "name": "ott-play-foss-frontend",
-  "version": "1.0.0",
+  "name": "OTT-play-FOSS",
+  "version": "1.1.0",
   "description": "This application launches OTT-play FOSS in always on top, resizable and compact Webview mode.",
   "main": "main.js",
   "scripts": {
