@@ -15,5 +15,3 @@ F11 Key will enter and exit Full Screen mode.
 ![image](https://github.com/user-attachments/assets/62c433be-0473-4f32-8551-a462d3938412)
 
 ![screenshot1](https://github.com/user-attachments/assets/6660c9fb-3022-4884-b321-900bbb94da7b)
-
-![screenshot3](https://github.com/user-attachments/assets/7535828e-3d6c-40da-a239-b1444f5fd836)
